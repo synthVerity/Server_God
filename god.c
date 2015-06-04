@@ -39,20 +39,28 @@ int main(void)
   listener = make_socket(PORT);
   addrlen = sizeof(clientaddr);
 
-  // Receive from the client a single input
-  if((nbytes = recvfrom(listener, data, DATAMAX-1, 0,
-      (struct sockaddr *)&clientaddr, &addrlen)) == -1)
+  // Main loop. Infinite pending break from command
+  for(;;)
   {
-    perror("recvfrom");
-    return 1;
+    // Receive data from client
+    if((nbytes = recvfrom(listener, data, DATAMAX-1, 0,
+        (struct sockaddr *)&clientaddr, &addrlen)) == -1)
+    {
+      perror("recvfrom");
+      return 1;
+    }
+
+    // Remove new lines from the string
+    strtok(data, "\n"); strtok(data, "\r");
+
+    data[nbytes] = '\0';
+    if((nbytes = sendto(listener, data, strlen(data), 0,
+        (struct sockaddr *)&clientaddr, addrlen)) == -1)
+    {
+      perror("sendto");
+      return 2;
+    }
   }
-
-  // Remove new lines from the string
-  strtok(data, "\n"); strtok(data, "\r");
-
-  // Output the string from the client
-  data[nbytes] = '\0';
-  fputs(data, stdout);
 
   return 0;
 }
@@ -82,10 +90,4 @@ int make_socket(uint16_t port)
   }
 
   return sock;
-}
-
-// Function to get address from current structure. Only using IPv4
-void *get_in_addr(struct sockaddr *sa)
-{
-  return &(((struct sockaddr_in *)sa)->sin_addr);
 }

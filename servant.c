@@ -54,11 +54,23 @@ int main(int argc, char *argv[])
 
   // Main loop. Get user input, and send it to the server
   fgets(data, DATAMAX, stdin);
-  if((nbytes = sendto(sockfd, data, strlen(data), 0, (struct sockaddr *)&servinfo, addrlen)) == -1)
+  if((nbytes = sendto(sockfd, data, strlen(data), 0,
+      (struct sockaddr *)&servinfo, addrlen)) == -1)
   {
     perror("sendto");
     return 1;
   }
+
+  bzero(data, DATAMAX);
+  if((nbytes = recvfrom(sockfd, data, DATAMAX-1, 0,
+      (struct sockaddr *)&servinfo, &addrlen)) == -1)
+  {
+    perror("recvfrom");
+    return 2;
+  }
+
+  data[nbytes] = '\0';
+  fprintf(stdout, "%s\n", data);
 
   return 0;
 }
