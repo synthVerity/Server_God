@@ -33,6 +33,7 @@ int main(void)
 
   // Basic varibles: Flags; Buffers;
   char data[DATAMAX];
+  char reply[DATAMAX];
   int nbytes;
 
   // Start the socket
@@ -52,9 +53,20 @@ int main(void)
 
     // Remove new lines from the string
     strtok(data, "\n"); strtok(data, "\r");
-
     data[nbytes] = '\0';
-    if((nbytes = sendto(listener, data, strlen(data), 0,
+
+    /* Command if-else tree. If anybody has a better idea of managing this I
+     * would greatly appreciate it. */
+    // Shutdown command. Stops the server.
+    if(!strcmp(data, "shutdown") || !strcmp(data, "Shutdown"))
+    {
+      strcpy(reply, "Shutting down the server.");
+      break;
+    }
+
+    // If it is not a built in command, send back the default message
+    strcpy(reply, "Not a recognized command. Please try again.");
+    if((nbytes = sendto(listener, reply, strlen(reply), 0,
         (struct sockaddr *)&clientaddr, addrlen)) == -1)
     {
       perror("sendto");
@@ -62,6 +74,15 @@ int main(void)
     }
   }
 
+  // Close the socket and end the program. Let the client know.
+  strcpy(reply, "Shutting down the server.");
+  if(sendto(listener, reply, strlen(reply), 0, (struct sockaddr *)&clientaddr,
+      addrlen) == -1)
+  {
+    perror("sendto");
+    return 2;
+  }
+  close(listener);
   return 0;
 }
 
