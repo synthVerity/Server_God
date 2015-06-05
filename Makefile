@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -Wall -g -c
+CFLAGS = -Wall -pedantic -Werror -g -c
 LDFLAGS =
 GOD_SOURCES = god.c
 SERVANT_SOURCES = servant.c
@@ -22,8 +22,11 @@ $(GOD_EXECUTABLE): $(GOD_OBJECTS)
 $(SERVANT_EXECUTABLE): $(SERVANT_OBJECTS)
 	$(CC) $(LDFLAGS) $^ -o $@
 
-.c.o:
-	$(CC) $(CFLAGS) $< -o $@
+$(GOD_OBJECTS): $(GOD_SOURCES)
+	$(CC) $(CFLAGS) $^ -o $@
+
+$(SERVANT_OBJECTS): $(SERVANT_SOURCES)
+	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
 	rm $(GOD_OBJECTS) $(SERVANT_OBJECTS)
