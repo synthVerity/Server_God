@@ -6,109 +6,189 @@
  *          of the clients. Will keep certain variables to influence the game. *
  ******************************************************************************/
 
-// Header information. Planning on putting into header file
+// Header information(needs to be moved to header file)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <unistd.h>
-#include <netdb.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <netinet/in.h>
+#include <sys/types.h>
 #include <arpa/inet.h>
+#include <unistd.h>
+#include <errno.h>
 
-#define PORT 50505
+#define PORT 30303
 #define DATAMAX 512
+#define MAXCONNECTIONS 10
 
-int make_socket(uint16_t port);
+int make_socket (uint16_t port);
+void *get_in_addr(struct sockaddr *sa);
 
 // Obvious main is obvious
 int main(void)
 {
-  // Socket variables: Socket; Socket structure; Socket size
-  int listener;
-  struct sockaddr_storage clientaddr;
-  socklen_t addrlen;
+  // File descriptor sets. One master and one for basic handling.
+  // fdmax holds the total amount of file descriptors to handle.
+  fd_set master;
+  fd_set readfds;
+  int fdmax;
 
-  // Basic varibles: Flags; Buffers;
+  // Socket variables: Socket; Socket Structure; Socket size
+  int listener;
+  int newfd;
+  struct sockaddr_storage remoteaddr;
+  socklen_t addrlen;
+  char remoteIP[INET_ADDRSTRLEN];
+
+  // Flags, buffers, and other basic variables
+  int i;
   char data[DATAMAX];
   char reply[DATAMAX];
   int nbytes;
 
-  // Start the socket
-  listener = make_socket(PORT);
-  addrlen = sizeof(clientaddr);
+  // Initialize the sets
+  FD_ZERO(&master);
+  FD_ZERO(&readfds);
 
-  // Main loop. Infinite pending break from command
+  // Start the socket and bind it.
+  listener = make_socket(PORT);
+  if(listen(listener, MAXCONNECTIONS) == -1)
+  {
+    perror("listen");
+    return 1;
+  }
+
+  // Add the listener to the master set.
+  FD_SET(listener, &master);
+
+  // Listener is the biggest file descriptor so far.
+  fdmax = listener;
+
+  // Main loop
   for(;;)
   {
-    // Receive data from client
-    if((nbytes = recvfrom(listener, data, DATAMAX-1, 0,
-        (struct sockaddr *)&clientaddr, &addrlen)) == -1)
+    readfds = master; // Copy the master set for use
+    if(select(fdmax+1, &readfds, NULL, NULL, NULL) == -1)
     {
-      perror("recvfrom");
-      return 1;
-    }
-
-    // Remove new lines from the string
-    strtok(data, "\n"); strtok(data, "\r");
-    data[nbytes] = '\0';
-
-    /* Command if-else tree. If anybody has a better idea of managing this I
-     * would greatly appreciate it. */
-    // Shutdown command. Stops the server.
-    if(!strcmp(data, "shutdown") || !strcmp(data, "Shutdown"))
-    {
-      strcpy(reply, "Shutting down the server.");
-      break;
-    }
-
-    // If it is not a built in command, send back the default message
-    strcpy(reply, "Not a recognized command. Please try again.");
-    if((nbytes = sendto(listener, reply, strlen(reply), 0,
-        (struct sockaddr *)&clientaddr, addrlen)) == -1)
-    {
-      perror("sendto");
+      perror("select");
       return 2;
     }
+
+    for(i = 0; i <= fdmax; i++)
+    {
+      if(FD_ISSET(i, &readfds)) // Have a connection
+      {
+        if(i == listener) // Handle a new client
+        {
+          addrlen = sizeof(remoteaddr);
+          newfd = accept(listener, (struct sockaddr *)&remoteaddr, &addrlen);
+          if(newfd == -1)
+          {
+            perror("accept");
+            return 3;
+          }
+          else
+          {
+            // Add the new connection to the set, and set the new max
+            FD_SET(newfd, &master);
+            if(newfd > fdmax)
+            {
+              fdmax = newfd;
+            }
+            printf("New connection from %s on socket %d.\n",
+              inet_ntop(remoteaddr.ss_family,
+                get_in_addr((struct sockaddr *)&remoteaddr), remoteIP,
+                INET_ADDRSTRLEN), newfd);
+
+          }
+        }
+        else // Handle data from known client
+        {
+          bzero(data, DATAMAX);
+          if((nbytes = recv(i, data, sizeof(data), 0)) <= 0)
+          {
+            if(nbytes == 0) // Error or disconnect
+            {
+              printf("Socket %d hung up.\n", i);
+            }
+            else
+            {
+              perror("recv");
+            }
+            close(i); // See ya (cockbite).
+            FD_CLR(i, &master);
+          }
+          else // We got data from the client, now do something with it
+          {
+            // Get rid of any possible newline characters that made it's way in.
+            strtok(data, "\n"); strtok(data, "\r");
+
+            strcpy(reply, "Default");
+
+            if(!strcmp(data, "close") || !strcmp(data, "Close"))
+            {
+              // Send the close flag to the client
+              strcpy(reply, "___CLS___");
+            }
+            else if(!strcmp(data, "shutdown") || !strcmp(data, "Shutdown"))
+            {
+              // Send the close flag and end the server
+              strcpy(reply, "___CLS___");
+              for(i = 0; i <= fdmax; i++)
+              {
+                if(send(i, reply, strlen(reply), 0) == -1)
+                {
+                  perror("send");
+                  exit(1);
+                }
+              }
+              close(listener);
+              return 0;
+            }
+
+            if((nbytes = send(i, reply, strlen(reply), 0)) == -1)
+            {
+              perror("send");
+              exit(1);
+            }
+          }
+        }
+      }
+    }
   }
 
-  // Close the socket and end the program. Let the client know.
-  strcpy(reply, "Shutting down the server.");
-  if(sendto(listener, reply, strlen(reply), 0, (struct sockaddr *)&clientaddr,
-      addrlen) == -1)
-  {
-    perror("sendto");
-    return 2;
-  }
-  close(listener);
   return 0;
 }
 
-// Socket creation function
-int make_socket(uint16_t port)
+// Socket creation and binding function taken from GNU exapmles
+int make_socket (uint16_t port)
 {
   int sock;
   struct sockaddr_in name;
 
-  // Start the socket with basic information
-  sock = socket(PF_INET, SOCK_DGRAM, 0);
-  if(sock < 0)
+  /* Create the socket. */
+  sock = socket (PF_INET, SOCK_STREAM, 0);
+  if (sock < 0)
   {
-    perror("socket");
-    exit(EXIT_FAILURE);
+    perror ("socket");
+    exit (EXIT_FAILURE);
   }
 
-  // Binding the socket to our port
+  /* Give the socket a name. */
   name.sin_family = AF_INET;
-  name.sin_port = htons(port);
-  name.sin_addr.s_addr = htonl(INADDR_ANY);
-  if(bind(sock, (struct sockaddr *)&name, sizeof(name)) < 0)
+  name.sin_port = htons (port);
+  name.sin_addr.s_addr = htonl (INADDR_ANY);
+  if (bind (sock, (struct sockaddr *) &name, sizeof (name)) < 0)
   {
-    perror("bind");
-    exit(EXIT_FAILURE);
+    perror ("bind");
+    exit (EXIT_FAILURE);
   }
 
   return sock;
+}
+
+// Get the address from a struct
+void *get_in_addr(struct sockaddr *sa)
+{
+  return &(((struct sockaddr_in *)sa)->sin_addr);
 }

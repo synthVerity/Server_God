@@ -17,12 +17,19 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define PORT 50505
+#define PORT 30303
 #define DATAMAX 512
 
 // Obvious main is obvious
 int main(int argc, char *argv[])
 {
+
+  if(argc != 2)
+  {
+    fprintf(stderr, "Usage: %s <Server Address>\n", argv[0]);
+    exit(1);
+  }
+
   // Socket variables: Socket; Server structure; Socket size;
   int sockfd;
   struct sockaddr_in servinfo;
@@ -32,15 +39,8 @@ int main(int argc, char *argv[])
   char data[DATAMAX];
   int nbytes;
 
-  // Make sure the user has the right amount of arguments
-  if(argc != 2)
-  {
-    fprintf(stderr, "Usage: %s <Server IP>\n", argv[0]);
-    exit(1);
-  }
-
   addrlen = sizeof(servinfo);
-  if((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+  if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
   {
     perror("socket");
     return 1;
@@ -52,25 +52,44 @@ int main(int argc, char *argv[])
   servinfo.sin_addr.s_addr = inet_addr(argv[1]);
   servinfo.sin_port = htons(PORT);
 
+  if(connect(sockfd, (struct sockaddr *)&servinfo, sizeof(servinfo)) == -1)
+  {
+    close(sockfd);
+    perror("connect");
+    exit(1);
+  }
+
   // Main loop. Get user input, and send it to the server
-  fgets(data, DATAMAX, stdin);
-  if((nbytes = sendto(sockfd, data, strlen(data), 0,
-      (struct sockaddr *)&servinfo, addrlen)) == -1)
+  for(;;)
   {
-    perror("sendto");
-    return 1;
+    fgets(data, DATAMAX, stdin);
+    if((nbytes = send(sockfd, data, strlen(data), 0)) == -1)
+    {
+      perror("sendto");
+      return 1;
+    }
+
+    bzero(data, DATAMAX);
+    if((nbytes = recv(sockfd, data, DATAMAX-1, 0)) == -1)
+    {
+      perror("recvfrom");
+      return 2;
+    }
+
+    // Set the string from the server. If it contains close flag, end connection
+    // otherwise, print out the response
+    data[nbytes] = '\0';
+    if(strstr(data, "___CLS___"))
+    {
+      break;
+    }
+    else
+    {
+      fprintf(stdout, "%s", data);
+    }
   }
 
-  bzero(data, DATAMAX);
-  if((nbytes = recvfrom(sockfd, data, DATAMAX-1, 0,
-      (struct sockaddr *)&servinfo, &addrlen)) == -1)
-  {
-    perror("recvfrom");
-    return 2;
-  }
-
-  data[nbytes] = '\0';
-  fprintf(stdout, "%s\n", data);
-
+  // Close the socket and end the program
+  close(sockfd);
   return 0;
 }
