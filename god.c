@@ -41,7 +41,7 @@ int main(void)
   char remoteIP[INET_ADDRSTRLEN];
 
   // Flags, buffers, and other basic variables
-  int i;
+  int i, j;
   char data[DATAMAX];
   char reply[DATAMAX];
   int nbytes;
@@ -132,11 +132,10 @@ int main(void)
             }
             else if(!strcmp(data, "shutdown") || !strcmp(data, "Shutdown"))
             {
-              // Send the close flag and end the server
-              strcpy(reply, "___CLS___");
-              for(i = 0; i <= fdmax; i++)
+              strcpy(reply, "Server shutting down.\n___CLS___\n");
+              for(j = 4; j <= fdmax; j++)
               {
-                if(send(i, reply, strlen(reply), 0) == -1)
+                if(send(j, reply, strlen(reply), 0) == -1)
                 {
                   perror("send");
                   exit(1);
@@ -151,6 +150,8 @@ int main(void)
               perror("send");
               exit(1);
             }
+
+
           }
         }
       }

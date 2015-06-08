@@ -75,12 +75,18 @@ int main(int argc, char *argv[])
       perror("recvfrom");
       return 2;
     }
+    else if(nbytes == 0)
+    {
+      close(sockfd);
+      return 0;
+    }
 
     // Set the string from the server. If it contains close flag, end connection
     // otherwise, print out the response
     data[nbytes] = '\0';
     if(strstr(data, "___CLS___"))
     {
+      fprintf(stdout, "%s", data);
       break;
     }
     else
