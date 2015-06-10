@@ -8,7 +8,7 @@ SERVANT_OBJECTS = $(SERVANT_SOURCES:.c=.o)
 GOD_EXECUTABLE = god.out
 SERVANT_EXECUTABLE = servant.out
 
-all: god servant
+all: god servant clean
 
 .PHONY: all clean god servant
 
